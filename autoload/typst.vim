@@ -35,7 +35,7 @@ function! typst#TypstWatch(...)
     endif
 
     " Write message
-    echo 'Starting: ' . l:cmd
+    redraw | echo 'Starting: ' . l:cmd
 
     let l:str = has('win32')
               \ ? 'cmd /s /c "' . l:cmd . '"'
