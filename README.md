@@ -106,6 +106,9 @@ call plug#end()
 - `g:typst_foldnested`:
     Enable nested foldings
     *Default:* `1`
+- `g:typst_html`:
+    Enable the `html` feature for compilation (adds `--features html` to typst commands).
+    *Default:* `0`
 
 ### Commands
 

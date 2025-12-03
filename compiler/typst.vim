@@ -17,6 +17,10 @@ endif
 let s:makeprg = [current_compiler, 'compile',
               \  '--diagnostic-format', 'short']
 
+if g:typst_html
+    call extend(s:makeprg, ['--features', 'html'])
+endif
+
 if has('patch-7.4.191')
     call add(s:makeprg, '%:S')
 else

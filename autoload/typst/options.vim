@@ -16,6 +16,7 @@ function! typst#options#init() abort " {{{1
     call s:declare_option('typst_embedded_languages', [])
     call s:declare_option('typst_folding', 0)
     call s:declare_option('typst_foldnested', 1)
+    call s:declare_option('typst_html', 0)
 
     let s:initialized = v:true
 endfunction " }}}1

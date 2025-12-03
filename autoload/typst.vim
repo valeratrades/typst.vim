@@ -7,7 +7,13 @@ function! typst#TypstWatch(...)
         \ . ' watch'
         \ . ' ' . join(a:000)
         \ . ' --diagnostic-format short'
-        \ . " '" . expand('%') . "'"
+
+    " Add html feature if enabled
+    if g:typst_html
+        let l:cmd = l:cmd . ' --features html'
+    endif
+
+    let l:cmd = l:cmd . " '" . expand('%') . "'"
 
     " Add custom output directory if enabled
     if g:typst_output_to_tmp
