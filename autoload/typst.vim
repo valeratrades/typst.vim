@@ -1,70 +1,92 @@
-function! typst#TypstWatch(...)
-    " Prepare command
-    " NOTE: added arguments #23 but they will always be like
-    " `typst <args> watch <file> --open` so in the future this might be
-    " sensitive to in which order typst options should come.
-    let l:cmd = g:typst_cmd
-        \ . ' watch'
-        \ . ' ' . join(a:000)
-        \ . ' --diagnostic-format short'
+let s:JobStart = function(has('nvim') ? 'jobstart' : 'job_start')
+let s:JobStop  = function(has('nvim') ? 'jobstop'  : 'job_stop')
 
-    " Add html feature if enabled
-    if g:typst_html
-        let l:cmd = l:cmd . ' --features html'
-    endif
+augroup TypstWatchEmu
+    autocmd!
+augroup END
 
-    let l:cmd = l:cmd . " '" . expand('%') . "'"
-
-    " Add custom output directory if enabled
-    if g:typst_output_to_tmp
-        let l:file_path = expand('%:p')
-        let l:home_dir = expand('$HOME')
-        " Remove HOME directory prefix if present
-        if l:file_path =~# '^' . l:home_dir
-            let l:relative_path = substitute(l:file_path, '^' . l:home_dir . '/', '', '')
-        else
-            let l:relative_path = l:file_path
-        endif
-        " Strip .typ or .typst extension before adding .pdf
-        let l:relative_path = substitute(l:relative_path, '\.\(typ\|typst\)$', '', '')
-        let l:output_path = '/tmp/typst_out/' . l:relative_path . '.pdf'
-        " Create output directory if it doesn't exist
-        let l:output_dir = fnamemodify(l:output_path, ':h')
-        call mkdir(l:output_dir, 'p')
-        let l:cmd = l:cmd . ' "' . l:output_path . '"'
-    endif
-
-    if !empty(g:typst_pdf_viewer)
-        let l:cmd = l:cmd . ' --open ' . g:typst_pdf_viewer
+function! typst#TypstWatch(...) abort
+    let l:src = expand('%:p')
+    if empty(l:src) | echoerr 'TypstWatch: buffer has no file' | return | endif
+    let l:out = s:OutputPath(l:src)              " '' when output_to_tmp is off
+    if &filetype ==# 'typst'
+        let l:plan = s:TypstPlan(a:000, l:src, l:out)
+    elseif &filetype ==# 'markdown'
+        let l:plan = s:PandocPlan(a:000, l:src, l:out)
     else
-        let l:cmd = l:cmd . ' --open'
+        echoerr 'TypstWatch: unsupported filetype ' . &filetype | return
     endif
+    call s:StartWatch(l:plan)
+endfunction
 
-    " Write message
+function! s:OutputPath(src) abort
+    if !g:typst_output_to_tmp | return '' | endif
+    let l:home = expand('$HOME')
+    let l:rel = a:src =~# '^' . l:home
+            \ ? substitute(a:src, '^' . l:home . '/', '', '')
+            \ : a:src
+    let l:rel = substitute(l:rel, '\.\(typ\|typst\|md\|markdown\)$', '', '')
+    let l:out = '/tmp/typst_out/' . l:rel . '.pdf'
+    call mkdir(fnamemodify(l:out, ':h'), 'p')
+    return l:out
+endfunction
+
+function! s:TypstPlan(args, src, out) abort
+    let l:argv = [g:typst_cmd, 'watch'] + a:args + ['--diagnostic-format', 'short']
+    if g:typst_html | let l:argv += ['--features', 'html'] | endif
+    let l:argv += ["'" . a:src . "'"]
+    if !empty(a:out) | let l:argv += ['"' . a:out . '"'] | endif
+    let l:argv += empty(g:typst_pdf_viewer) ? ['--open'] : ['--open', g:typst_pdf_viewer]
+    return {'argv': l:argv, 'native': v:true, 'out': a:out}
+endfunction
+
+function! s:PandocPlan(args, src, out) abort
+    " pandoc has no default file output -> always need an explicit -o target.
+    let l:out = empty(a:out) ? expand('%:p:r') . '.pdf' : a:out
+    let l:argv = [g:typst_pandoc_cmd] + a:args + ["'" . a:src . "'", '-o', '"' . l:out . '"']
+    return {'argv': l:argv, 'native': v:false, 'out': l:out}
+endfunction
+
+function! s:JobOpts() abort
+    return has('nvim')
+        \ ? {'on_stderr': 'typst#TypstWatcherCb'}
+        \ : {'err_mode': 'raw', 'err_cb': 'typst#TypstWatcherCb'}
+endfunction
+
+function! s:Wrap(argv) abort
+    let l:cmd = join(a:argv)
+    return has('win32') ? 'cmd /s /c "' . l:cmd . '"' : 'sh -c "' . l:cmd . '"'
+endfunction
+
+function! s:StopWatch() abort
+    if exists('s:watcher')
+        try | call s:JobStop(s:watcher) | catch | endtry
+        unlet s:watcher
+    endif
+    autocmd! TypstWatchEmu
+endfunction
+
+function! s:RunOnce(plan) abort         " transient one-shot; NOT stored in s:watcher
+    call s:JobStart(s:Wrap(a:plan.argv), s:JobOpts())
+endfunction
+
+function! s:OpenViewer(out) abort
+    let l:viewer = !empty(g:typst_pdf_viewer) ? g:typst_pdf_viewer
+                \ : has('win32') ? 'start' : has('mac') ? 'open' : 'xdg-open'
+    call s:JobStart(s:Wrap([l:viewer, '"' . a:out . '"']), {})
+endfunction
+
+function! s:StartWatch(plan) abort
+    call s:StopWatch()
+    if a:plan.native
+        let s:watcher = s:JobStart(s:Wrap(a:plan.argv), s:JobOpts())
+    else
+        call s:RunOnce(a:plan)          " compile now
+        call s:OpenViewer(a:plan.out)   " launch viewer once
+        execute printf('autocmd TypstWatchEmu BufWritePost <buffer=%d> call s:RunOnce(%s)',
+                     \ bufnr('%'), string(a:plan))
+    endif
     echo 'Typst watch started'
-
-    let l:str = has('win32')
-              \ ? 'cmd /s /c "' . l:cmd . '"'
-              \ : 'sh -c "' . l:cmd . '"'
-
-    if has('nvim')
-        let l:JobStart = function('jobstart')
-        let l:JobStop = function('jobstop')
-        let l:options = {'on_stderr': 'typst#TypstWatcherCb'}
-    else
-        let l:JobStart = function('job_start')
-        let l:JobStop = function('job_stop')
-        let l:options = {'err_mode': 'raw',
-                        \'err_cb': 'typst#TypstWatcherCb'}
-    endif
-
-    if exists('s:watcher') " && job_status(s:watcher) == 'run'
-        " echoerr 'TypstWatch is already running.'
-        call l:JobStop(s:watcher)
-    endif
-
-    let s:watcher = l:JobStart(l:str, l:options)
-
 endfunction
 
 " Callback function for job exit

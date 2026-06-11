@@ -6,6 +6,7 @@ function! typst#options#init() abort " {{{1
 
     call s:declare_option('typst_syntax_highlight', 1)
     call s:declare_option('typst_cmd', 'typst')
+    call s:declare_option('typst_pandoc_cmd', 'pandoc')
     call s:declare_option('typst_pdf_viewer', '')
     call s:declare_option('typst_output_to_tmp', 0)
     call s:declare_option('typst_conceal', 0)
