@@ -59,14 +59,14 @@ function! s:Wrap(argv) abort
 endfunction
 
 function! s:StopWatch() abort
-    if exists('s:watcher')
-        try | call s:JobStop(s:watcher) | catch | endtry
-        unlet s:watcher
+    if exists('b:typst_watcher')
+        try | call s:JobStop(b:typst_watcher) | catch | endtry
+        unlet b:typst_watcher
     endif
-    autocmd! TypstWatchEmu
+    autocmd! TypstWatchEmu * <buffer>
 endfunction
 
-function! s:RunOnce(plan) abort         " transient one-shot; NOT stored in s:watcher
+function! s:RunOnce(plan) abort         " transient one-shot; NOT stored in b:typst_watcher
     call s:JobStart(s:Wrap(a:plan.argv), s:JobOpts())
 endfunction
 
@@ -79,7 +79,7 @@ endfunction
 function! s:StartWatch(plan) abort
     call s:StopWatch()
     if a:plan.native
-        let s:watcher = s:JobStart(s:Wrap(a:plan.argv), s:JobOpts())
+        let b:typst_watcher = s:JobStart(s:Wrap(a:plan.argv), s:JobOpts())
     else
         call s:RunOnce(a:plan)          " compile now
         call s:OpenViewer(a:plan.out)   " launch viewer once
